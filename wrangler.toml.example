@@ -1,0 +1,26 @@
+name = "sveltekit-blog-test"
+compatibility_date = "2024-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+main = ".svelte-kit/cloudflare/_worker.js"
+
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
+
+# Add KV binding for caching
+[[kv_namespaces]]
+binding = "CACHE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[vars]
+ENVIRONMENT = "production"
+PUBLIC_SUPABASE_URL = "YOUR_SUPABASE_URL"
+PUBLIC_SUPABASE_ANON_KEY = "YOUR_ANON_KEY"
+SUPABASE_SERVICE_ROLE_KEY = "YOUR_SERVICE_ROLE_KEY"
+R2_ACCOUNT_ID = "YOUR_R2_ACCOUNT_ID"
+R2_ACCESS_KEY_ID = "YOUR_R2_ACCESS_KEY"
+R2_SECRET_ACCESS_KEY = "YOUR_R2_SECRET_ACCESS_KEY"
+PUBLIC_R2_BUCKET_NAME = "YOUR_BUCKET_NAME"
+PUBLIC_R2_URL = "YOUR_R2_URL"
+RESEND_API_KEY = "YOUR_RESEND_KEY"
