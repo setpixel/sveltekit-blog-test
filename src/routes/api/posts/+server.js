@@ -1,9 +1,16 @@
 import { json } from '@sveltejs/kit';
 import { supabaseAdmin } from '$lib/server-supabase.js';
+import { isAdmin } from '$lib/admin.js';
 
 export async function POST({ request, locals }) {
-	if (!locals.session) {
+	if (!locals.session || !locals.user) {
 		return json({ error: 'Unauthorized' }, { status: 401 });
+	}
+
+	// Check if user is admin using database
+	const userIsAdmin = await isAdmin(locals.user);
+	if (!userIsAdmin) {
+		return json({ error: 'Admin access required' }, { status: 403 });
 	}
 
 	try {

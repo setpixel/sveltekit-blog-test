@@ -6,15 +6,46 @@
 	let { children } = $props();
 	let session = $state(null);
 	let user = $state(null);
+	let isUserAdmin = $state(false);
 
 	onMount(async () => {
 		const { data: { session: currentSession } } = await supabase.auth.getSession();
 		session = currentSession;
 		user = currentSession?.user;
 
-		supabase.auth.onAuthStateChange((event, session) => {
+		// Check if user is admin
+		if (user) {
+			try {
+				const { data, error } = await supabase
+					.from('admin_users')
+					.select('id')
+					.eq('user_id', user.id)
+					.single();
+				isUserAdmin = !error && !!data;
+			} catch (error) {
+				isUserAdmin = false;
+			}
+		}
+
+		supabase.auth.onAuthStateChange(async (event, session) => {
 			session = session;
 			user = session?.user;
+			
+			// Check admin status when auth state changes
+			if (user) {
+				try {
+					const { data, error } = await supabase
+						.from('admin_users')
+						.select('id')
+						.eq('user_id', user.id)
+						.single();
+					isUserAdmin = !error && !!data;
+				} catch (error) {
+					isUserAdmin = false;
+				}
+			} else {
+				isUserAdmin = false;
+			}
 		});
 	});
 
@@ -35,8 +66,11 @@
 		<div class="nav-links">
 			<a href="/">Home</a>
 			{#if user}
-				<a href="/admin">Admin</a>
-				<a href="/admin/posts/new">New Post</a>
+				{#if isUserAdmin}
+					<a href="/admin">Admin</a>
+					<a href="/admin/posts/new">New Post</a>
+					<a href="/admin/upload">Upload Files</a>
+				{/if}
 				<button on:click={signOut}>Sign Out</button>
 			{:else}
 				<a href="/auth/login">Login</a>

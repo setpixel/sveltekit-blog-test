@@ -1,9 +1,16 @@
 import { redirect } from '@sveltejs/kit';
 import { supabaseAdmin } from '$lib/server-supabase.js';
+import { isAdmin } from '$lib/admin.js';
 
 export async function load({ locals }) {
 	if (!locals.session || !locals.user) {
 		throw redirect(302, '/auth/login');
+	}
+
+	// Check if user is admin using database
+	const userIsAdmin = await isAdmin(locals.user);
+	if (!userIsAdmin) {
+		throw redirect(302, '/');
 	}
 
 	try {
