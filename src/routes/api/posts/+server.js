@@ -14,7 +14,7 @@ export async function POST({ request, locals }) {
 	}
 
 	try {
-		const { title, content, slug } = await request.json();
+		const { title, content, slug, published, visible_in_listing, status } = await request.json();
 
 		if (!title || !content || !slug) {
 			return json({ error: 'Missing required fields' }, { status: 400 });
@@ -26,7 +26,10 @@ export async function POST({ request, locals }) {
 				title,
 				content,
 				slug,
-				author_id: locals.session.user.id
+				author_id: locals.session.user.id,
+				published: published !== false, // Default to true
+				visible_in_listing: visible_in_listing !== false, // Default to true
+				status: status || 'published'
 			})
 			.select()
 			.single();

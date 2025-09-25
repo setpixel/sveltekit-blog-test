@@ -1,18 +1,19 @@
 <script>
 	import { goto } from '$app/navigation';
 	
-	let title = $state('');
-	let content = $state('');
-	let slug = $state('');
-	let published = $state(true);
-	let visibleInListing = $state(true);
-	let status = $state('published');
+	let { data } = $props();
+	let title = $state(data.post.title);
+	let content = $state(data.post.content);
+	let slug = $state(data.post.slug);
+	let published = $state(data.post.published);
+	let visibleInListing = $state(data.post.visible_in_listing);
+	let status = $state(data.post.status);
 	let loading = $state(false);
 	let error = $state('');
 
 	// Auto-generate slug from title
 	$effect(() => {
-		if (title) {
+		if (title && !slug) {
 			slug = title
 				.toLowerCase()
 				.replace(/[^a-z0-9\s-]/g, '')
@@ -22,9 +23,9 @@
 		}
 	});
 
-	async function handleSubmit() {
+	async function handleUpdate() {
 		if (!title || !content || !slug) {
-			error = 'Please fill in all fields';
+			error = 'Please fill in all required fields';
 			return;
 		}
 
@@ -32,15 +33,15 @@
 		error = '';
 
 		try {
-			const response = await fetch('/api/posts', {
-				method: 'POST',
+			const response = await fetch(`/api/posts/${data.post.id}`, {
+				method: 'PUT',
 				headers: {
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({ 
 					title, 
 					content, 
-					slug,
+					slug, 
 					published,
 					visible_in_listing: visibleInListing,
 					status
@@ -49,11 +50,36 @@
 
 			if (!response.ok) {
 				const errorData = await response.json();
-				throw new Error(errorData.error || 'Failed to create post');
+				throw new Error(errorData.error || 'Failed to update post');
 			}
 
-			const { slug: createdSlug } = await response.json();
 			goto(`/admin`);
+		} catch (err) {
+			error = err.message;
+		}
+
+		loading = false;
+	}
+
+	async function handleDelete() {
+		if (!confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+			return;
+		}
+
+		loading = true;
+		error = '';
+
+		try {
+			const response = await fetch(`/api/posts/${data.post.id}`, {
+				method: 'DELETE'
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to delete post');
+			}
+
+			goto('/admin');
 		} catch (err) {
 			error = err.message;
 		}
@@ -63,17 +89,17 @@
 </script>
 
 <svelte:head>
-	<title>New Post - Admin</title>
+	<title>Edit Post - Admin</title>
 </svelte:head>
 
 <div class="editor-container">
-	<h1>Create New Post</h1>
+	<h1>Edit Post</h1>
 
 	{#if error}
 		<div class="error">{error}</div>
 	{/if}
 
-	<form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+	<form onsubmit={(e) => { e.preventDefault(); handleUpdate(); }}>
 		<div class="form-group">
 			<label for="title">Title</label>
 			<input
@@ -137,8 +163,11 @@
 
 		<div class="form-actions">
 			<a href="/admin" class="btn btn-secondary">Cancel</a>
+			<button type="button" onclick={handleDelete} disabled={loading} class="btn btn-danger">
+				Delete Post
+			</button>
 			<button type="submit" disabled={loading}>
-				{loading ? 'Creating...' : 'Create Post'}
+				{loading ? 'Updating...' : 'Update Post'}
 			</button>
 		</div>
 	</form>
@@ -232,6 +261,15 @@
 
 	.btn-secondary:hover {
 		background: #555;
+	}
+
+	.btn-danger {
+		background: #dc3545;
+		color: white;
+	}
+
+	.btn-danger:hover {
+		background: #c82333;
 	}
 
 	button {

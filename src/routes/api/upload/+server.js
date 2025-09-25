@@ -4,6 +4,14 @@ import { isAdmin } from '$lib/admin.js';
 
 // R2 client configuration
 function getR2Client(env) {
+	// Check if all required environment variables are present
+	const requiredVars = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
+	const missingVars = requiredVars.filter(varName => !env[varName]);
+	
+	if (missingVars.length > 0) {
+		throw new Error(`Missing R2 environment variables: ${missingVars.join(', ')}`);
+	}
+
 	return new S3Client({
 		region: 'auto',
 		endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -26,6 +34,23 @@ export async function POST({ request, locals, platform }) {
 	}
 
 	try {
+		// Check environment variables first
+		if (!platform.env.R2_ACCOUNT_ID) {
+			return json({ error: 'R2_ACCOUNT_ID environment variable not set' }, { status: 500 });
+		}
+		if (!platform.env.R2_ACCESS_KEY_ID) {
+			return json({ error: 'R2_ACCESS_KEY_ID environment variable not set' }, { status: 500 });
+		}
+		if (!platform.env.R2_SECRET_ACCESS_KEY) {
+			return json({ error: 'R2_SECRET_ACCESS_KEY environment variable not set' }, { status: 500 });
+		}
+		if (!platform.env.PUBLIC_R2_BUCKET_NAME) {
+			return json({ error: 'PUBLIC_R2_BUCKET_NAME environment variable not set' }, { status: 500 });
+		}
+		if (!platform.env.PUBLIC_R2_URL) {
+			return json({ error: 'PUBLIC_R2_URL environment variable not set' }, { status: 500 });
+		}
+
 		const formData = await request.formData();
 		const file = formData.get('file');
 		const folder = formData.get('folder') || 'uploads';

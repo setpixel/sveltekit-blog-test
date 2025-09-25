@@ -19,11 +19,17 @@
 		{#each data.posts as post}
 			<div class="post-item">
 				<div class="post-info">
-					<h3><a href="/posts/{post.slug}">{post.title}</a></h3>
+					<h3>
+						<a href="/{post.slug}">{post.title}</a>
+						<span class="status-badge status-{post.status}">{post.status}</span>
+					</h3>
 					<p class="meta">
 						Created: {new Date(post.created_at).toLocaleDateString()}
 						{#if post.updated_at !== post.created_at}
 							• Updated: {new Date(post.updated_at).toLocaleDateString()}
+						{/if}
+						{#if !post.visible_in_listing}
+							• Hidden from listing
 						{/if}
 					</p>
 				</div>
@@ -86,6 +92,9 @@
 
 	.post-info h3 {
 		margin: 0 0 0.5rem 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.post-info h3 a {
@@ -95,6 +104,29 @@
 
 	.post-info h3 a:hover {
 		color: #007acc;
+	}
+
+	.status-badge {
+		padding: 0.25rem 0.5rem;
+		border-radius: 3px;
+		font-size: 0.75rem;
+		font-weight: 500;
+		text-transform: uppercase;
+	}
+
+	.status-published {
+		background: #d4edda;
+		color: #155724;
+	}
+
+	.status-draft {
+		background: #fff3cd;
+		color: #856404;
+	}
+
+	.status-archived {
+		background: #f8d7da;
+		color: #721c24;
 	}
 
 	.meta {

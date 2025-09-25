@@ -25,7 +25,7 @@
 							Published on {new Date(post.created_at).toLocaleDateString()}
 						</p>
 						<div class="excerpt">
-							{@html marked(post.excerpt || post.content?.substring(0, 200) + '...')}
+							{@html marked((post.excerpt || post.content || '').substring(0, 200) + '...')}
 						</div>
 						<a href="/{post.slug}" class="read-more">Read More →</a>
 					</article>

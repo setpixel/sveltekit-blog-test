@@ -14,10 +14,10 @@ export async function load({ locals }) {
 	}
 
 	try {
-		// Only fetch essential fields and limit results for better performance
+		// Fetch all necessary fields including the new management fields
 		const { data: posts, error } = await supabaseAdmin
 			.from('posts')
-			.select('id, title, slug, created_at, updated_at')
+			.select('id, title, slug, created_at, updated_at, published, visible_in_listing, status')
 			.eq('author_id', locals.user.id)
 			.order('created_at', { ascending: false })
 			.limit(20); // Limit to 20 most recent posts
