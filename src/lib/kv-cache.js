@@ -21,6 +21,12 @@ export class KVCache {
 				return null;
 			}
 			
+			// Check if invalidated
+			if (data.invalidatedAt && Date.now() < data.invalidatedAt + 60000) {
+				// Within 60 seconds of invalidation, treat as stale
+				return null;
+			}
+			
 			return data.value;
 		} catch (error) {
 			console.error('KV cache get error:', error);
@@ -32,7 +38,8 @@ export class KVCache {
 		try {
 			const data = {
 				value,
-				expires: Date.now() + (ttlSeconds * 1000)
+				expires: Date.now() + (ttlSeconds * 1000),
+				invalidatedAt: null
 			};
 			
 			await this.cache.put(key, JSON.stringify(data), {
@@ -45,9 +52,35 @@ export class KVCache {
 
 	async delete(key) {
 		try {
-			await this.cache.delete(key);
+			// Instead of deleting, mark as invalidated
+			const cached = await this.cache.get(key);
+			if (cached) {
+				const data = JSON.parse(cached);
+				data.invalidatedAt = Date.now();
+				// Keep it for 60 more seconds to ensure invalidation propagates
+				await this.cache.put(key, JSON.stringify(data), {
+					expirationTtl: 60
+				});
+			}
 		} catch (error) {
 			console.error('KV cache delete error:', error);
+		}
+	}
+	
+	// Force immediate invalidation by overwriting with expired data
+	async invalidate(key) {
+		try {
+			const data = {
+				value: null,
+				expires: Date.now() - 1, // Already expired
+				invalidatedAt: Date.now()
+			};
+			
+			await this.cache.put(key, JSON.stringify(data), {
+				expirationTtl: 60 // Keep for 60 seconds to ensure propagation
+			});
+		} catch (error) {
+			console.error('KV cache invalidate error:', error);
 		}
 	}
 }

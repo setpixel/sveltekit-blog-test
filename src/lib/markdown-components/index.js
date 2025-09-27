@@ -10,7 +10,7 @@ import Counter from './client/Counter.svelte';
 import { registerClientComponent } from './registry.js';
 
 // Register client components
-registerClientComponent('RelativeTime', RelativeTime);
+registerClientComponent('RelativeTime', RelativeTime, { inline: true });
 registerClientComponent('Counter', Counter);
 
 // Export main functions

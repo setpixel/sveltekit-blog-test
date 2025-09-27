@@ -4,12 +4,13 @@ import { KVCache } from '$lib/kv-cache.js';
 
 export async function load({ params, setHeaders, platform }) {
 	try {
-		// Check if we're in production (Cloudflare Workers) or development
-		const isProduction = !!platform?.env?.CACHE;
+		// Check if we're in production using ENVIRONMENT variable
+		const env = platform?.env || {};
+		const isProduction = env.ENVIRONMENT === 'production';
 		
-		if (isProduction) {
+		if (isProduction && env.CACHE) {
 			// Production: Use KV caching
-			const cache = new KVCache(platform.env);
+			const cache = new KVCache(env);
 			const cacheKey = `post-${params.slug}`;
 			
 			// Check KV cache first
@@ -68,9 +69,9 @@ export async function load({ params, setHeaders, platform }) {
 		});
 
 		// Cache the result in KV (only in production)
-		if (isProduction) {
-			const cache = new KVCache(platform.env);
-			await cache.set(`post-${params.slug}`, post, 10000); // Cache for 1 hour
+		if (isProduction && env.CACHE) {
+			const cache = new KVCache(env);
+			await cache.set(`post-${params.slug}`, post, 300);
 			console.log('Post cached:', params.slug);
 		}
 

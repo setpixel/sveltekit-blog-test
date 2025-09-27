@@ -106,6 +106,11 @@ markedWithComponents.setOptions({
 	gfm: true
 });
 
+// Get inline components dynamically from registry
+function getInlineComponents() {
+	return Object.keys(componentRegistry).filter(name => componentRegistry[name].inline);
+}
+
 // Internal function that doesn't reset client components
 function renderMarkdownWithComponentsInternal(markdown, resetComponents = true) {
 	if (resetComponents) {
@@ -113,10 +118,71 @@ function renderMarkdownWithComponentsInternal(markdown, resetComponents = true) 
 		componentCounter = 0;
 	}
 	
-	// Render the markdown
-	const html = markedWithComponents.parse(markdown);
+	// Get inline components from registry
+	const inlineComponents = getInlineComponents();
 	
-	// Return the HTML and client components (no duplicates)
+	// Pre-process markdown to handle inline components
+	if (inlineComponents.length > 0) {
+		const inlineComponentRegex = new RegExp(`<(${inlineComponents.join('|')})\\s*([^/>]*)\\s*/>`, 'g');
+		const placeholders = [];
+		let processedMarkdown = markdown.replace(inlineComponentRegex, (match, componentName, propsString) => {
+			const placeholder = `%%%INLINE_COMPONENT_${placeholders.length}%%%`;
+			placeholders.push({ match, componentName, propsString });
+			return placeholder;
+		});
+		
+		// Render the markdown
+		let html = markedWithComponents.parse(processedMarkdown);
+		
+		// Replace placeholders with actual inline components
+		placeholders.forEach(({ match, componentName, propsString }, index) => {
+			const component = componentRegistry[componentName];
+			const placeholder = `%%%INLINE_COMPONENT_${index}%%%`;
+			
+			if (component) {
+				// Parse props
+				const props = {};
+				const propPattern = /(\w+)=["']([^"']*)["']/g;
+				let propMatch;
+				while ((propMatch = propPattern.exec(propsString)) !== null) {
+					props[propMatch[1]] = propMatch[2];
+				}
+				
+				if (component.type === 'server') {
+					// Render the server component
+					const rendered = component.render(props, null);
+					html = html.replace(placeholder, rendered);
+				} else if (component.type === 'client') {
+					// Handle client-side component
+					componentCounter++;
+					const hashInput = `${componentName}-${componentCounter}-${propsString}`;
+					const componentId = `md-component-${simpleHash(hashInput)}-${componentCounter}`;
+					
+					clientComponents.push({
+						id: componentId,
+						name: componentName,
+						props,
+						content: null
+					});
+					
+					// Return a placeholder span that will be hydrated on client
+					const rendered = `<span id="${componentId}" data-component="${componentName}" data-props='${JSON.stringify(props)}'></span>`;
+					html = html.replace(placeholder, rendered);
+				}
+			} else {
+				// If not found, put the original back
+				html = html.replace(placeholder, match);
+			}
+		});
+		
+		return {
+			html,
+			clientComponents: [...clientComponents]
+		};
+	}
+	
+	// If no inline components, just render normally
+	const html = markedWithComponents.parse(markdown);
 	return {
 		html,
 		clientComponents: [...clientComponents]

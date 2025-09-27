@@ -2,18 +2,20 @@
 export const componentRegistry = {};
 
 // Register a server-side component
-export function registerServerComponent(name, renderFn) {
+export function registerServerComponent(name, renderFn, options = {}) {
 	componentRegistry[name] = {
 		type: 'server',
-		render: renderFn
+		render: renderFn,
+		inline: options.inline || false
 	};
 }
 
 // Register a client-side component
-export function registerClientComponent(name, component) {
+export function registerClientComponent(name, component, options = {}) {
 	componentRegistry[name] = {
 		type: 'client',
-		component
+		component,
+		inline: options.inline || false
 	};
 }
 

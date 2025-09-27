@@ -36,4 +36,4 @@ function renderYearsAgo(props, content) {
 	}
 }
 
-registerServerComponent('YearsAgo', renderYearsAgo);
+registerServerComponent('YearsAgo', renderYearsAgo, { inline: true });

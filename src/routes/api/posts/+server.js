@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { supabaseAdmin } from '$lib/server-supabase.js';
 import { isAdmin } from '$lib/admin.js';
+import { KVCache } from '$lib/kv-cache.js';
 
-export async function POST({ request, locals }) {
+export async function POST({ request, locals, platform }) {
 	if (!locals.session || !locals.user) {
 		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
@@ -37,6 +38,16 @@ export async function POST({ request, locals }) {
 		if (error) {
 			console.error('Error creating post:', error);
 			return json({ error: 'Failed to create post' }, { status: 500 });
+		}
+
+		// Invalidate homepage cache when a new post is created
+		const env = platform?.env || {};
+		const isProduction = env.ENVIRONMENT === 'production';
+		
+		if (isProduction && env.CACHE) {
+			const cache = new KVCache(env);
+			await cache.invalidate('homepage-posts');
+			console.log('Cache invalidated for new post creation');
 		}
 
 		return json({ slug: data.slug });

@@ -1,28 +1,73 @@
 import { json } from '@sveltejs/kit';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { isAdmin } from '$lib/admin.js';
 
-// R2 client configuration
-function getR2Client(env) {
-	// Check if all required environment variables are present
-	const requiredVars = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
-	const missingVars = requiredVars.filter(varName => !env[varName]);
+// Helper function to get R2 configuration
+function getR2Config(locals, platform) {
+	// Check if we're in production (ENVIRONMENT must be explicitly set to "production")
+	const env = locals?.runtime?.env || platform?.env || {};
+	const isProduction = env.ENVIRONMENT === 'production';
 	
-	if (missingVars.length > 0) {
-		throw new Error(`Missing R2 environment variables: ${missingVars.join(', ')}`);
+	console.log('Environment:', isProduction ? 'production' : 'development');
+	
+	if (isProduction) {
+		// Production: use Cloudflare Workers bindings
+		if (!env.R2_BUCKET || !env.PUBLIC_R2_URL) {
+			throw new Error('R2 bucket or public URL not configured in production');
+		}
+		
+		console.log('Using Cloudflare Workers bindings');
+		return {
+			type: 'workers',
+			bucket: env.R2_BUCKET,
+			publicUrl: env.PUBLIC_R2_URL
+		};
+	} else {
+		// Development: use AWS SDK with environment variables
+		console.log('Checking development environment variables...');
+		
+		if (!process.env.PUBLIC_R2_URL || !process.env.R2_ACCOUNT_ID || 
+			!process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY || 
+			!process.env.PUBLIC_R2_BUCKET_NAME) {
+			console.error('Missing environment variables:', {
+				PUBLIC_R2_URL: !!process.env.PUBLIC_R2_URL,
+				R2_ACCOUNT_ID: !!process.env.R2_ACCOUNT_ID,
+				R2_ACCESS_KEY_ID: !!process.env.R2_ACCESS_KEY_ID,
+				R2_SECRET_ACCESS_KEY: !!process.env.R2_SECRET_ACCESS_KEY,
+				PUBLIC_R2_BUCKET_NAME: !!process.env.PUBLIC_R2_BUCKET_NAME
+			});
+			throw new Error('R2 configuration missing in .env file');
+		}
+		
+		console.log('Using AWS SDK for development');
+		return {
+			type: 'sdk',
+			accountId: process.env.R2_ACCOUNT_ID,
+			accessKeyId: process.env.R2_ACCESS_KEY_ID,
+			secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+			bucketName: process.env.PUBLIC_R2_BUCKET_NAME,
+			publicUrl: process.env.PUBLIC_R2_URL
+		};
 	}
+}
 
+// Helper function to create R2 client for SDK mode
+async function createR2Client(config) {
+	// Dynamically import AWS SDK only when needed
+	const { S3Client } = await import('@aws-sdk/client-s3');
+	
 	return new S3Client({
 		region: 'auto',
-		endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+		endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
 		credentials: {
-			accessKeyId: env.R2_ACCESS_KEY_ID,
-			secretAccessKey: env.R2_SECRET_ACCESS_KEY
+			accessKeyId: config.accessKeyId,
+			secretAccessKey: config.secretAccessKey
 		}
 	});
 }
 
 export async function POST({ request, locals, platform }) {
+	console.log('=== UPLOAD REQUEST START ===');
+	
 	if (!locals.session || !locals.user) {
 		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
@@ -34,22 +79,8 @@ export async function POST({ request, locals, platform }) {
 	}
 
 	try {
-		// Check environment variables first
-		if (!platform.env.R2_ACCOUNT_ID) {
-			return json({ error: 'R2_ACCOUNT_ID environment variable not set' }, { status: 500 });
-		}
-		if (!platform.env.R2_ACCESS_KEY_ID) {
-			return json({ error: 'R2_ACCESS_KEY_ID environment variable not set' }, { status: 500 });
-		}
-		if (!platform.env.R2_SECRET_ACCESS_KEY) {
-			return json({ error: 'R2_SECRET_ACCESS_KEY environment variable not set' }, { status: 500 });
-		}
-		if (!platform.env.PUBLIC_R2_BUCKET_NAME) {
-			return json({ error: 'PUBLIC_R2_BUCKET_NAME environment variable not set' }, { status: 500 });
-		}
-		if (!platform.env.PUBLIC_R2_URL) {
-			return json({ error: 'PUBLIC_R2_URL environment variable not set' }, { status: 500 });
-		}
+		// Get R2 configuration
+		const r2Config = getR2Config(locals, platform);
 
 		const formData = await request.formData();
 		const file = formData.get('file');
@@ -79,39 +110,53 @@ export async function POST({ request, locals, platform }) {
 
 		console.log('Uploading file:', { filename, key, size: file.size, type: file.type });
 
-		// Get R2 client
-		const r2Client = getR2Client(platform.env);
-
-		// Convert file to Uint8Array for better compatibility
 		const arrayBuffer = await file.arrayBuffer();
-		const uint8Array = new Uint8Array(arrayBuffer);
 
-		// Upload to R2
-		const uploadCommand = new PutObjectCommand({
-			Bucket: platform.env.PUBLIC_R2_BUCKET_NAME,
-			Key: key,
-			Body: uint8Array,
-			ContentType: file.type,
-			ContentLength: uint8Array.length,
-			Metadata: {
-				originalName: file.name,
-				uploadedBy: locals.user.id,
-				uploadedAt: new Date().toISOString()
-			}
-		});
+		if (r2Config.type === 'workers') {
+			// Production: Upload using Cloudflare Workers binding
+			await r2Config.bucket.put(key, arrayBuffer, {
+				httpMetadata: {
+					contentType: file.type,
+				},
+				customMetadata: {
+					originalName: file.name,
+					uploadedBy: locals.user.id,
+					uploadedAt: new Date().toISOString()
+				}
+			});
+			console.log('File uploaded via Workers binding');
+		} else {
+			// Development: Upload using AWS SDK
+			const { PutObjectCommand } = await import('@aws-sdk/client-s3');
+			const r2Client = await createR2Client(r2Config);
+			
+			const command = new PutObjectCommand({
+				Bucket: r2Config.bucketName,
+				Key: key,
+				Body: Buffer.from(arrayBuffer),
+				ContentType: file.type,
+				Metadata: {
+					originalName: file.name,
+					uploadedBy: locals.user.id,
+					uploadedAt: new Date().toISOString()
+				}
+			});
 
-		console.log('Sending upload command...');
-		const result = await r2Client.send(uploadCommand);
-		console.log('Upload result:', result);
+			console.log('Uploading to R2 via SDK:', {
+				bucket: r2Config.bucketName,
+				key: key
+			});
 
-		// Generate public URL using custom domain
-		const publicUrl = `${platform.env.PUBLIC_R2_URL}/${key}`;
+			await r2Client.send(command);
+			console.log('File uploaded via AWS SDK');
+		}
 
-		console.log('Generated URL:', publicUrl);
+		const fileUrl = `${r2Config.publicUrl}/${key}`;
+		console.log('File available at:', fileUrl);
 
 		return json({
 			success: true,
-			url: publicUrl,
+			url: fileUrl,
 			filename: filename,
 			originalName: file.name,
 			size: file.size,
@@ -120,6 +165,7 @@ export async function POST({ request, locals, platform }) {
 
 	} catch (error) {
 		console.error('Upload error:', error);
+		console.error('Error stack:', error.stack);
 		return json({ error: `Upload failed: ${error.message}` }, { status: 500 });
 	}
 }
@@ -136,23 +182,44 @@ export async function GET({ locals, platform }) {
 	}
 
 	try {
-		const r2Client = getR2Client(platform.env);
-		
-		const listCommand = new ListObjectsV2Command({
-			Bucket: platform.env.PUBLIC_R2_BUCKET_NAME,
-			Prefix: 'uploads/',
-			MaxKeys: 100
-		});
+		// Get R2 configuration
+		const r2Config = getR2Config(locals, platform);
 
-		const response = await r2Client.send(listCommand);
-		console.log('List response:', response);
-		
-		const files = (response.Contents || []).map(obj => ({
-			key: obj.Key,
-			size: obj.Size,
-			lastModified: obj.LastModified,
-			url: `${platform.env.PUBLIC_R2_URL}/${obj.Key}`
-		}));
+		let files = [];
+
+		if (r2Config.type === 'workers') {
+			// Production: List using Cloudflare Workers binding
+			const listed = await r2Config.bucket.list({
+				prefix: 'uploads/',
+				limit: 100
+			});
+
+			files = listed.objects.map(obj => ({
+				key: obj.key,
+				size: obj.size,
+				lastModified: obj.uploaded,
+				url: `${r2Config.publicUrl}/${obj.key}`
+			}));
+		} else {
+			// Development: List using AWS SDK
+			const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+			const r2Client = await createR2Client(r2Config);
+			
+			const command = new ListObjectsV2Command({
+				Bucket: r2Config.bucketName,
+				Prefix: 'uploads/',
+				MaxKeys: 100
+			});
+
+			const response = await r2Client.send(command);
+			
+			files = (response.Contents || []).map(obj => ({
+				key: obj.Key,
+				size: obj.Size,
+				lastModified: obj.LastModified?.toISOString(),
+				url: `${r2Config.publicUrl}/${obj.Key}`
+			}));
+		}
 
 		console.log('Files found:', files.length);
 
@@ -182,14 +249,26 @@ export async function DELETE({ request, locals, platform }) {
 			return json({ error: 'No file key provided' }, { status: 400 });
 		}
 
-		const r2Client = getR2Client(platform.env);
-		
-		const deleteCommand = new DeleteObjectCommand({
-			Bucket: platform.env.PUBLIC_R2_BUCKET_NAME,
-			Key: key
-		});
+		// Get R2 configuration
+		const r2Config = getR2Config(locals, platform);
 
-		await r2Client.send(deleteCommand);
+		if (r2Config.type === 'workers') {
+			// Production: Delete using Cloudflare Workers binding
+			await r2Config.bucket.delete(key);
+		} else {
+			// Development: Delete using AWS SDK
+			const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+			const r2Client = await createR2Client(r2Config);
+			
+			const command = new DeleteObjectCommand({
+				Bucket: r2Config.bucketName,
+				Key: key
+			});
+
+			await r2Client.send(command);
+		}
+
+		console.log('File deleted:', key);
 
 		return json({ success: true });
 

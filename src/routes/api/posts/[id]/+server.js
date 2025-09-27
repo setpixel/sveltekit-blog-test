@@ -56,11 +56,14 @@ export async function PUT({ params, request, locals, platform }) {
 		}
 
 		// Clear cache for this post (both old and new slug)
-		if (platform?.env?.CACHE) {
-			const cache = new KVCache(platform.env);
-			await cache.delete(`post-${existingPost.slug}`); // Clear old slug cache
-			await cache.delete(`post-${slug}`); // Clear new slug cache
-			await cache.delete('homepage-posts'); // Clear homepage cache
+		const env = platform?.env || {};
+		const isProduction = env.ENVIRONMENT === 'production';
+		
+		if (isProduction && env.CACHE) {
+			const cache = new KVCache(env);
+			await cache.invalidate(`post-${existingPost.slug}`); // Invalidate old slug cache
+			await cache.invalidate(`post-${slug}`); // Invalidate new slug cache
+			await cache.invalidate('homepage-posts'); // Invalidate homepage cache
 			console.log('Cache invalidated for post:', existingPost.slug, 'and', slug);
 		}
 
@@ -108,10 +111,13 @@ export async function DELETE({ params, locals, platform }) {
 		}
 
 		// Clear cache for deleted post
-		if (platform?.env?.CACHE) {
-			const cache = new KVCache(platform.env);
-			await cache.delete(`post-${existingPost.slug}`);
-			await cache.delete('homepage-posts');
+		const env = platform?.env || {};
+		const isProduction = env.ENVIRONMENT === 'production';
+		
+		if (isProduction && env.CACHE) {
+			const cache = new KVCache(env);
+			await cache.invalidate(`post-${existingPost.slug}`);
+			await cache.invalidate('homepage-posts');
 			console.log('Cache invalidated for deleted post:', existingPost.slug);
 		}
 

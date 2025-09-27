@@ -3,19 +3,20 @@ import { KVCache } from '$lib/kv-cache.js';
 
 export async function load({ setHeaders, platform }) {
 	try {
-		// Check if we're in production (Cloudflare Workers) or development
-		const isProduction = !!platform?.env?.CACHE;
+		// Check if we're in production using ENVIRONMENT variable
+		const env = platform?.env || {};
+		const isProduction = env.ENVIRONMENT === 'production';
 		
-		if (isProduction) {
+		if (isProduction && env.CACHE) {
 			// Production: Use KV caching
-			const cache = new KVCache(platform.env);
+			const cache = new KVCache(env);
 			const cacheKey = 'homepage-posts';
 			
 			// Check KV cache first
 			const cached = await cache.get(cacheKey);
 			if (cached) {
 				setHeaders({
-					'Cache-Control': 'public, max-age=3000', // 5 minutes
+					'Cache-Control': 'public, max-age=0, s-maxage=60, must-revalidate', // Always revalidate browser, 1 minute CDN
 					'X-Cache': 'KV-HIT'
 				});
 				console.log('Posts loaded from KV cache');
@@ -24,7 +25,7 @@ export async function load({ setHeaders, platform }) {
 
 			// Set cache headers for cache miss
 			setHeaders({
-				'Cache-Control': 'public, max-age=60', // 1 minute
+				'Cache-Control': 'public, max-age=0, s-maxage=30, must-revalidate', // Always revalidate
 				'X-Cache': 'KV-MISS'
 			});
 		} else {
@@ -78,9 +79,9 @@ export async function load({ setHeaders, platform }) {
 		console.log('Posts fetched successfully:', posts.length);
 
 		// Cache the result in KV (only in production)
-		if (isProduction) {
-			const cache = new KVCache(platform.env);
-			await cache.set('homepage-posts', posts, 3000); // Cache for 5 minutes
+		if (isProduction && env.CACHE) {
+			const cache = new KVCache(env);
+			await cache.set('homepage-posts', posts, 300); // Cache for 5 minutes
 		}
 
 		return { posts };

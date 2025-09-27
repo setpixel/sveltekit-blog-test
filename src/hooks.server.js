@@ -1,21 +1,22 @@
 import { createServerClient } from '@supabase/ssr';
 
 export async function handle({ event, resolve }) {
-	// Check if we're in development (local) or production (Cloudflare Workers)
-	const isDev = !event.locals.runtime;
+	// Check if we're in production using ENVIRONMENT variable
+	const env = event.locals.runtime?.env || {};
+	const isProduction = env.ENVIRONMENT === 'production' || process.env.ENVIRONMENT === 'production';
 	
 	let supabaseUrl, supabaseAnonKey, supabaseServiceKey;
 	
-	if (isDev) {
-		// Development mode - use environment variables directly
-		supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
-		supabaseAnonKey = process.env.PUBLIC_SUPABASE_ANON_KEY;
-		supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-	} else {
+	if (isProduction) {
 		// Production mode - use Cloudflare Workers environment
 		supabaseUrl = event.locals.runtime.env.PUBLIC_SUPABASE_URL;
 		supabaseAnonKey = event.locals.runtime.env.PUBLIC_SUPABASE_ANON_KEY;
 		supabaseServiceKey = event.locals.runtime.env.SUPABASE_SERVICE_ROLE_KEY;
+	} else {
+		// Development mode - use environment variables directly
+		supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
+		supabaseAnonKey = process.env.PUBLIC_SUPABASE_ANON_KEY;
+		supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 	}
 
 	// Create Supabase client with proper cookie handling
